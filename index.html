@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Case Reminder App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://unpkg.com/fullcalendar@5.11.3/main.min.js"></script>
+    <link href="https://unpkg.com/fullcalendar@5.11.3/main.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-center mb-8">Case Reminder System</h1>
+
+        <!-- Calendar Section -->
+        <div class="mb-8 bg-white rounded-lg shadow-md p-4">
+            <div id="calendar"></div>
+        </div>
+
+        <!-- Add Case Form -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-4">Add New Case</h2>
+            <form id="caseForm" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Person 1 Name</label>
+                        <input type="text" id="person1" required class="w-full p-2 border rounded">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Person 2 Name</label>
+                        <input type="text" id="person2" required class="w-full p-2 border rounded">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Case Name</label>
+                    <input type="text" id="caseName" required class="w-full p-2 border rounded">
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Date</label>
+                        <input type="date" id="caseDate" required class="w-full p-2 border rounded">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Time</label>
+                        <input type="time" id="caseTime" required class="w-full p-2 border rounded">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Upload File</label>
+                    <input type="file" id="caseFile" class="w-full p-2 border rounded">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Details</label>
+                    <textarea id="caseDetails" rows="3" class="w-full p-2 border rounded"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Priority</label>
+                    <select id="casePriority" required class="w-full p-2 border rounded">
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Set Reminder</button>
+            </form>
+        </div>
+
+        <!-- Existing Cases -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold mb-4">Existing Cases</h2>
+            <div id="existingCases" class="space-y-4"></div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Calendar
+        document.addEventListener('DOMContentLoaded', function() {
+            const calendarEl = document.getElementById('calendar');
+            const calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                events: loadCasesFromStorage(),
+                eventClick: function(info) {
+                    alert(`Case Details:\n${info.event.title}\n${info.event.extendedProps.details}`);
+                }
+            });
+            calendar.render();
+
+            // Initialize cases array in local storage if it doesn't exist
+            if (!localStorage.getItem('cases')) {
+                localStorage.setItem('cases', JSON.stringify([]));
+            }
+
+            // Form submission handler
+            document.getElementById('caseForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const caseData = {
+                    id: Date.now(),
+                    person1: document.getElementById('person1').value,
+                    person2: document.getElementById('person2').value,
+                    caseName: document.getElementById('caseName').value,
+                    date: document.getElementById('caseDate').value,
+                    time: document.getElementById('caseTime').value,
+                    details: document.getElementById('caseDetails').value,
+                    priority: document.getElementById('casePriority').value
+                };
+
+                // Handle file upload
+                const fileInput = document.getElementById('caseFile');
+                if (fileInput.files.length > 0) {
+                    const formData = new FormData();
+                    formData.append('file', fileInput.files[0]);
+                    formData.append('userId', 'user123');
+                    formData.append('appSlug', 'case-reminder-123');
+
+                    try {
+                        const response = await fetch('https://r0c8kgwocscg8gsokogwwsw4.zetaverse.one/storage/upload', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': 'Bearer GVnfYlrbtETFXqdp8x0ttbkGIVf1'
+                            },
+                            body: formData
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            caseData.fileUrl = result.url;
+                            caseData.filePath = result.path;
+                        }
+                    } catch (error) {
+                        console.error('File upload failed:', error);
+                    }
+                }
+
+                // Save to MongoDB
+                try {
+                    const response = await fetch('https://r0c8kgwocscg8gsokogwwsw4.zetaverse.one/mongodb', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': 'Bearer GVnfYlrbtETFXqdp8x0ttbkGIVf1',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            appSlug: 'case-reminder-123',
+                            action: 'create',
+                            collection: 'cases',
+                            data: caseData
+                        })
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        // Save to local storage
+                        const cases = JSON.parse(localStorage.getItem('cases') || '[]');
+                        cases.push(caseData);
+                        localStorage.setItem('cases', JSON.stringify(cases));
+
+                        // Update calendar
+                        calendar.addEvent({
+                            title: caseData.caseName,
+                            start: `${caseData.date}T${caseData.time}`,
+                            backgroundColor: '#3788d8',
+                            details: caseData.details
+                        });
+
+                        // Set alarm
+                        const alarmTime = new Date(`${caseData.date}T${caseData.time}`);
+                        const now = new Date();
+                        const timeUntilAlarm = alarmTime - now;
+                        if (timeUntilAlarm > 0) {
+                            setTimeout(() => {
+                                alert(`Reminder: ${caseData.caseName}`);
+                            }, timeUntilAlarm);
+                        }
+
+                        // Refresh existing cases display
+                        displayExistingCases();
+                        e.target.reset();
+                    }
+                } catch (error) {
+                    console.error('Failed to save case:', error);
+                }
+            });
+
+            // Initial display of existing cases
+            displayExistingCases();
+        });
+
+        function loadCasesFromStorage() {
+            const cases = JSON.parse(localStorage.getItem('cases') || '[]');
+            return cases.map(caseData => ({
+                title: caseData.caseName,
+                start: `${caseData.date}T${caseData.time}`,
+                backgroundColor: '#3788d8',
+                details: caseData.details
+            }));
+        }
+
+        async function displayExistingCases() {
+            const existingCasesDiv = document.getElementById('existingCases');
+            existingCasesDiv.innerHTML = '';
+            
+            const cases = JSON.parse(localStorage.getItem('cases') || '[]');
+            
+            cases.forEach(caseData => {
+                const caseElement = document.createElement('div');
+                caseElement.className = 'border p-4 rounded';
+                caseElement.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="font-semibold">${caseData.caseName}</h3>
+                            <p>Date: ${caseData.date} Time: ${caseData.time}</p>
+                            <p>Priority: ${caseData.priority}</p>
+                            <p>Details: ${caseData.details}</p>
+                            ${caseData.fileUrl ? `<a href="${caseData.fileUrl}" target="_blank" class="text-blue-600">View Attached File</a>` : ''}
+                        </div>
+                        <div class="space-x-2">
+                            <button onclick="renameCase(${caseData.id})" class="text-blue-600">
+                                <i class="bi bi-pencil"></i> Rename
+                            </button>
+                            <button onclick="deleteCase(${caseData.id})" class="text-red-600">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                `;
+                existingCasesDiv.appendChild(caseElement);
+            });
+        }
+
+        async function deleteCase(id) {
+            const cases = JSON.parse(localStorage.getItem('cases') || '[]');
+            const caseToDelete = cases.find(c => c.id === id);
+            
+            if (caseToDelete && caseToDelete.filePath) {
+                // Delete file from storage
+                try {
+                    await fetch('https://r0c8kgwocscg8gsokogwwsw4.zetaverse.one/storage/delete', {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': 'Bearer GVnfYlrbtETFXqdp8x0ttbkGIVf1',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            userId: 'user123',
+                            appSlug: 'case-reminder-123',
+                            filePath: caseToDelete.filePath
+                        })
+                    });
+                } catch (error) {
+                    console.error('Failed to delete file:', error);
+                }
+            }
+
+            // Delete from MongoDB
+            try {
+                await fetch('https://r0c8kgwocscg8gsokogwwsw4.zetaverse.one/mongodb', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer GVnfYlrbtETFXqdp8x0ttbkGIVf1',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        appSlug: 'case-reminder-123',
+                        action: 'delete',
+                        collection: 'cases',
+                        conditions: { id: id }
+                    })
+                });
+
+                // Update local storage
+                const updatedCases = cases.filter(c => c.id !== id);
+                localStorage.setItem('cases', JSON.stringify(updatedCases));
+
+                // Refresh display
+                displayExistingCases();
+                location.reload(); // Refresh calendar
+            } catch (error) {
+                console.error('Failed to delete case:', error);
+            }
+        }
+
+        async function renameCase(id) {
+            const newName = prompt('Enter new case name:');
+            if (newName) {
+                const cases = JSON.parse(localStorage.getItem('cases') || '[]');
+                const updatedCases = cases.map(c => {
+                    if (c.id === id) {
+                        return { ...c, caseName: newName };
+                    }
+                    return c;
+                });
+
+                // Update in MongoDB
+                try {
+                    await fetch('https://r0c8kgwocscg8gsokogwwsw4.zetaverse.one/mongodb', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': 'Bearer GVnfYlrbtETFXqdp8x0ttbkGIVf1',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            appSlug: 'case-reminder-123',
+                            action: 'update',
+                            collection: 'cases',
+                            conditions: { id: id },
+                            data: { caseName: newName }
+                        })
+                    });
+
+                    // Update local storage
+                    localStorage.setItem('cases', JSON.stringify(updatedCases));
+
+                    // Refresh display
+                    displayExistingCases();
+                    location.reload(); // Refresh calendar
+                } catch (error) {
+                    console.error('Failed to rename case:', error);
+                }
+            }
+        }
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
